@@ -28,6 +28,7 @@ ThemeData buildGiWiFiTheme([Brightness brightness = Brightness.light]) {
   );
   return ThemeData(
     useMaterial3: true,
+    fontFamily: 'MiSans',
     colorScheme: scheme,
     scaffoldBackgroundColor: isDark ? null : const Color(0xFFF2F5FB),
     splashFactory: InkRipple.splashFactory,

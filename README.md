@@ -64,6 +64,10 @@ flutter run -d windows
 # 5. 打包发布版
 flutter build windows --release
 # 产物：build\windows\x64\runner\Release\giwifi_ua_switcher.exe
+
+# 6. 打包安卓 APK（需 Android SDK + NDK + CMake）
+flutter build apk --release
+# 产物：build\app\outputs\flutter-apk\app-release.apk
 ```
 
 > [!WARNING]
@@ -130,6 +134,6 @@ tool/
 
 ## 许可
 
-代码以 [MIT License](LICENSE) 开源。截图测试字体为 Noto Sans SC（SIL OFL 1.1）与 MaterialIcons（Apache 2.0）的子集，仅用于测试，详见 [test/fonts/LICENSE.txt](test/fonts/LICENSE.txt)。
+代码以 [MIT License](LICENSE) 开源。界面字体为小米 MiSans（免费商用，见 [assets/fonts/LICENSE-MiSans.txt](assets/fonts/LICENSE-MiSans.txt)）；截图测试字体为 Noto Sans SC（SIL OFL 1.1）与 MaterialIcons（Apache 2.0）的子集，仅用于测试，详见 [test/fonts/LICENSE.txt](test/fonts/LICENSE.txt)。
 
 本工具仅供技术学习与个人使用，一切风险与后果由使用者自行承担。

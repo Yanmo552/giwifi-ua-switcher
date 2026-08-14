@@ -16,3 +16,12 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  fonts:
+    - family: MiSans
+      fonts:
+        - asset: assets/fonts/mi_sans_regular.ttf
+          weight: 400
+        - asset: assets/fonts/mi_sans_medium.ttf
+          weight: 500
+        - asset: assets/fonts/mi_sans_bold.ttf
+          weight: 700
