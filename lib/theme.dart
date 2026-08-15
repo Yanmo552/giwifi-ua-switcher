@@ -1,12 +1,18 @@
 import 'package:flutter/material.dart';
 
-/// 品牌主色（Indigo Blue）
-const Color kBrandPrimary = Color(0xFF4C6FFF);
+/// 品牌主色（金黄，取自参考图标）
+const Color kBrandPrimary = Color(0xFFF3D223);
 
-/// 品牌辅色（Sky Blue），用于渐变
-const Color kBrandAccent = Color(0xFF38BDF8);
+/// 品牌辅色（琥珀），用于渐变
+const Color kBrandAccent = Color(0xFFF59E0B);
 
-/// 品牌渐变（页头 / 主按钮）
+/// 品牌深色前景（深藏青，用于黄色渐变上的文字/图标）
+const Color kBrandInk = Color(0xFF192944);
+
+/// 深藏青 72% 透明度（黄色渐变上的副标题）
+const Color kBrandInkSoft = Color(0xB8192944);
+
+/// 品牌渐变（金黄 → 琥珀，页头 / 主按钮）
 const LinearGradient kBrandGradient = LinearGradient(
   colors: <Color>[kBrandPrimary, kBrandAccent],
   begin: Alignment.topLeft,

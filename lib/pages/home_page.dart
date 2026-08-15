@@ -321,11 +321,10 @@ class _HomePageState extends State<HomePage> {
             width: 48,
             height: 48,
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: .18),
+              color: kBrandInk.withValues(alpha: .14),
               borderRadius: BorderRadius.circular(14),
             ),
-            child:
-                const Icon(Icons.wifi_rounded, color: Colors.white, size: 26),
+            child: const Icon(Icons.wifi_rounded, color: kBrandInk, size: 26),
           ),
           const SizedBox(width: 14),
           const Expanded(
@@ -335,7 +334,7 @@ class _HomePageState extends State<HomePage> {
                 Text(
                   'GiWiFi 一键认证',
                   style: TextStyle(
-                    color: Colors.white,
+                    color: kBrandInk,
                     fontSize: 20,
                     fontWeight: FontWeight.w700,
                     letterSpacing: .2,
@@ -344,7 +343,7 @@ class _HomePageState extends State<HomePage> {
                 SizedBox(height: 3),
                 Text(
                   '校园网终端 · 一键切换 · 极速认证',
-                  style: TextStyle(color: Colors.white70, fontSize: 12.5),
+                  style: TextStyle(color: kBrandInkSoft, fontSize: 12.5),
                 ),
               ],
             ),
@@ -353,7 +352,7 @@ class _HomePageState extends State<HomePage> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: .18),
+              color: kBrandInk.withValues(alpha: .14),
               borderRadius: BorderRadius.circular(999),
             ),
             child: Row(
@@ -371,7 +370,7 @@ class _HomePageState extends State<HomePage> {
                 Text(
                   label,
                   style: const TextStyle(
-                    color: Colors.white,
+                    color: kBrandInk,
                     fontSize: 12.5,
                     fontWeight: FontWeight.w600,
                   ),
@@ -722,9 +721,9 @@ class _HomePageState extends State<HomePage> {
           style: FilledButton.styleFrom(
             backgroundColor: Colors.transparent,
             disabledBackgroundColor: Colors.transparent,
-            foregroundColor: Colors.white,
+            foregroundColor: kBrandInk,
             disabledForegroundColor:
-                _checking ? scheme.onSurfaceVariant : Colors.white,
+                _checking ? scheme.onSurfaceVariant : kBrandInk,
             elevation: 0,
             minimumSize: const Size.fromHeight(56),
             shape: const RoundedRectangleBorder(),
@@ -738,7 +737,7 @@ class _HomePageState extends State<HomePage> {
                   height: 18,
                   child: CircularProgressIndicator(
                     strokeWidth: 2,
-                    color: Colors.white,
+                    color: kBrandInk,
                   ),
                 )
               else

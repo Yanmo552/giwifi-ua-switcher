@@ -34,6 +34,7 @@ class LogEntry {
 ///
 /// 存储位置：
 /// - Windows: %APPDATA%\giwifi_ua_switcher\settings.json
+/// - iOS/macOS: ~/Library/Application Support/giwifi_ua_switcher/settings.json
 /// - 其他平台: 用户主目录下 .giwifi_ua_switcher/settings.json
 ///
 /// 注意：密码以明文保存在本机配置文件中，请仅在个人设备上使用。
@@ -56,6 +57,10 @@ class SettingsService {
     final appData = Platform.environment['APPDATA'];
     if (appData != null && appData.isNotEmpty) {
       return '$appData${Platform.pathSeparator}giwifi_ua_switcher';
+    }
+    if (Platform.isIOS || Platform.isMacOS) {
+      final home = Platform.environment['HOME'] ?? Directory.current.path;
+      return '$home${Platform.pathSeparator}Library${Platform.pathSeparator}Application Support${Platform.pathSeparator}giwifi_ua_switcher';
     }
     final home = Platform.environment['HOME'] ?? Directory.current.path;
     return '$home${Platform.pathSeparator}.giwifi_ua_switcher';
