@@ -122,6 +122,7 @@ class AuthService {
     required String userAgent,
     String accountType = '2',
     Future<bool> Function(String rebindInfo)? onRebindConfirm,
+    Future<bool> Function()? onSwitchConfirm,
     void Function(String status)? onStatus,
   }) async {
     _cancelled = false;
@@ -148,19 +149,40 @@ class AuthService {
         accountType: accountType,
       );
 
-      if (result.success && result.alreadyOnline) {
-        // 当前设备已在线：先注销下线，再按所选设备类型重新认证
-        report('当前设备已在线，先下线再切换设备…');
-        if (await logout(userAgent)) {
-          report('已下线，等待 1 秒后重新认证…');
-          await _sleep(const Duration(seconds: 1));
-          continue;
+      if (result.alreadyOnline) {
+        // 已在线并不能证明账号密码正确。询问用户是否下线切换；
+        // 取消或注销失败时都按“未完成认证”返回，绝不显示认证成功。
+        final confirmed =
+            await (onSwitchConfirm?.call() ?? Future<bool>.value(false));
+        if (!confirmed) {
+          return const LoginResult(
+            success: false,
+            message: '当前设备已在线，已取消切换（未验证账号密码）',
+          );
         }
-        return result;
+        report('正在注销当前在线设备…');
+        if (!await logout(userAgent)) {
+          return const LoginResult(
+            success: false,
+            message: '注销失败，无法切换设备；请先在网页端手动下线后重试',
+          );
+        }
+        report('已下线，等待 1 秒后重新认证…');
+        await _sleep(const Duration(seconds: 1));
+        continue;
       }
 
       if (result.success) {
-        report('认证成功，正在确认在线状态…');
+        // 只有 loginAction 返回 status=1 才算成功，且成功后还要复核
+        // 设备是否真实上线，避免“密码错误也显示成功”的假成功。
+        report('服务器返回成功，正在复核在线状态…');
+        if (await _verifyOnline(userAgent) == _OnlineVerify.offline) {
+          return LoginResult(
+            success: false,
+            message: '服务器提示成功，但设备未检测到在线，请核对账号密码后重试',
+            raw: result.raw,
+          );
+        }
         final duration = await _fetchOnlineDuration(userAgent);
         final message = duration != null
             ? '认证成功，当前在线时长 $duration'
@@ -225,9 +247,11 @@ class AuthService {
 
     if (!_hasPasswordInput(html)) {
       if (_hasOnlineHint(html)) {
+        // 已在线不代表账号密码验证通过：绝不能当作“认证成功”返回，
+        // 是否切换设备由上层决定。
         return const LoginResult(
-          success: true,
-          message: '当前设备已在线，无需重复认证',
+          success: false,
+          message: '当前设备已在线',
           alreadyOnline: true,
         );
       }
@@ -358,6 +382,22 @@ class AuthService {
       body: '',
       contentType: 'application/x-www-form-urlencoded; charset=UTF-8',
     );
+  }
+
+  /// 复核设备是否真实上线：请求 logout 页。
+  /// 只有看到登录表单（密码框）才判定为“未上线”。
+  Future<_OnlineVerify> _verifyOnline(String userAgent) async {
+    try {
+      final html = await _getText('$baseUrl$kLogoutPath', userAgent);
+      if (_hasPasswordInput(html)) return _OnlineVerify.offline;
+      final hidden = parseHiddenInputs(html);
+      if (hidden.containsKey('si') || _hasOnlineHint(html)) {
+        return _OnlineVerify.online;
+      }
+      return _OnlineVerify.unknown;
+    } catch (_) {
+      return _OnlineVerify.unknown;
+    }
   }
 
   /// 认证成功后查询在线时长（HH:MM:SS）；离线或解析失败返回 null。
@@ -553,3 +593,6 @@ class AuthService {
       html.contains('已在线') ||
       html.contains('online_duration');
 }
+
+/// 在线复核结果（仅本文件内部使用）。
+enum _OnlineVerify { online, offline, unknown }

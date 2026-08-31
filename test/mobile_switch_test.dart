@@ -129,11 +129,93 @@ void main() {
       username: 'test2024',
       password: 'TestPass123@',
       userAgent: 'TestUA',
+      onSwitchConfirm: () async => true,
     );
     await server.close(force: true);
 
     expect(result.success, isTrue);
     expect(logoutPosts, 1);
     expect(loginGets, greaterThanOrEqualTo(2));
+  });
+
+  test('已在线但用户取消切换：不注销且不算认证成功', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final base = 'http://127.0.0.1:${server.port}';
+    var logoutPosts = 0;
+
+    server.listen((req) async {
+      final path = req.uri.path;
+      try {
+        if (path == '/gportal/web/login') {
+          req.response.headers.contentType = ContentType.html;
+          req.response.write(
+            '<html><body><a href="/gportal/web/logout">注销</a></body></html>',
+          );
+        } else if (path == '/gportal/Web/logoutAction') {
+          logoutPosts++;
+          req.response.write(jsonEncode(<String, dynamic>{'status': 1}));
+        } else {
+          req.response.statusCode = 404;
+        }
+        await req.response.close();
+      } catch (_) {
+        await req.response.close();
+      }
+    });
+
+    final auth = AuthService(baseUrl: base);
+    final result = await auth.login(
+      username: 'test2024',
+      password: 'TestPass123@',
+      userAgent: 'TestUA',
+      onSwitchConfirm: () async => false,
+    );
+    await server.close(force: true);
+
+    expect(result.success, isFalse);
+    expect(result.message, contains('已取消切换'));
+    expect(logoutPosts, 0);
+  });
+
+  test('服务器返回 status=1 但设备未上线：不算认证成功', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final base = 'http://127.0.0.1:${server.port}';
+
+    server.listen((req) async {
+      final path = req.uri.path;
+      try {
+        if (path == '/gportal/web/login') {
+          req.response.headers.contentType = ContentType.html;
+          req.response.write(_formPage());
+        } else if (path == '/gportal/Web/loginAction') {
+          // 模拟异常：status=1 但实际未放行
+          req.response.write(jsonEncode(<String, dynamic>{
+            'status': 1,
+            'info': '认证成功',
+            'data': <String, dynamic>{},
+          }));
+        } else if (path == '/gportal/web/logout') {
+          // 复核时仍是登录表单 → 判定未上线
+          req.response.headers.contentType = ContentType.html;
+          req.response.write(_formPage());
+        } else {
+          req.response.statusCode = 404;
+        }
+        await req.response.close();
+      } catch (_) {
+        await req.response.close();
+      }
+    });
+
+    final auth = AuthService(baseUrl: base);
+    final result = await auth.login(
+      username: 'test2024',
+      password: 'WrongPass123',
+      userAgent: 'TestUA',
+    );
+    await server.close(force: true);
+
+    expect(result.success, isFalse);
+    expect(result.message, contains('未检测到在线'));
   });
 }

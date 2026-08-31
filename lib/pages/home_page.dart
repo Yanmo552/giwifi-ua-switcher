@@ -153,6 +153,7 @@ class _HomePageState extends State<HomePage> {
           });
         },
         onRebindConfirm: _confirmRebindDialog,
+        onSwitchConfirm: _confirmSwitchDialog,
       );
       if (!mounted) return;
       setState(() {
@@ -217,6 +218,40 @@ class _HomePageState extends State<HomePage> {
               onPressed: () => Navigator.pop(dialogContext, true),
               icon: const Icon(Icons.check_rounded, size: 18),
               label: const Text('确认换绑'),
+            ),
+          ],
+        );
+      },
+    );
+    return confirmed ?? false;
+  }
+
+  /// 当前设备已在线时弹窗询问是否下线切换。
+  Future<bool> _confirmSwitchDialog() async {
+    if (!mounted) return false;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        final scheme = Theme.of(dialogContext).colorScheme;
+        return AlertDialog(
+          icon: Icon(Icons.swap_horiz_rounded, color: scheme.primary),
+          title: const Text('当前设备已在线'),
+          content: const Text(
+            '要继续切换设备吗？将先注销当前在线设备，'
+            '再按所选设备类型重新认证（会校验账号密码）。',
+            style: TextStyle(fontSize: 13.5, height: 1.5),
+          ),
+          actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('取消'),
+            ),
+            FilledButton.icon(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              icon: const Icon(Icons.logout_rounded, size: 18),
+              label: const Text('下线并切换'),
             ),
           ],
         );
