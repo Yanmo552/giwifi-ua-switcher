@@ -36,6 +36,7 @@ class _HomePageState extends State<HomePage> {
 
   List<LogEntry> _log = <LogEntry>[];
   Timer? _keepAliveTimer;
+  AuthService? _activeAuth;
 
   AuthService get _auth => AuthService(baseUrl: _serverCtrl.text.trim());
 
@@ -48,6 +49,7 @@ class _HomePageState extends State<HomePage> {
   @override
   void dispose() {
     _keepAliveTimer?.cancel();
+    _activeAuth?.cancel();
     _usernameCtrl.dispose();
     _passwordCtrl.dispose();
     _serverCtrl.dispose();
@@ -136,11 +138,21 @@ class _HomePageState extends State<HomePage> {
     });
     await _saveSettings();
 
+    final auth = _auth;
+    _activeAuth = auth;
     try {
-      final result = await _auth.login(
+      final result = await auth.login(
         username: username,
         password: password,
         userAgent: profile.userAgent,
+        onStatus: (status) {
+          if (!mounted) return;
+          setState(() {
+            _resultMessage = status;
+            _resultSuccess = false;
+          });
+        },
+        onRebindConfirm: _confirmRebindDialog,
       );
       if (!mounted) return;
       setState(() {
@@ -158,7 +170,9 @@ class _HomePageState extends State<HomePage> {
       );
     } catch (e) {
       if (!mounted) return;
-      final msg = _friendlyError(e);
+      final msg = e is AuthCancelledException || auth.isCancelled
+          ? '认证已停止'
+          : _friendlyError(e);
       setState(() {
         _resultMessage = msg;
         _resultSuccess = false;
@@ -173,8 +187,48 @@ class _HomePageState extends State<HomePage> {
         ),
       );
     } finally {
+      if (identical(_activeAuth, auth)) _activeAuth = null;
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  /// 服务器要求更换绑定设备时弹窗确认（resultCode=124）。
+  Future<bool> _confirmRebindDialog(String info) async {
+    if (!mounted) return false;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        final scheme = Theme.of(dialogContext).colorScheme;
+        return AlertDialog(
+          icon: Icon(Icons.devices_other_rounded, color: scheme.primary),
+          title: const Text('确认更换绑定设备'),
+          content: Text(
+            info,
+            style: const TextStyle(fontSize: 13.5, height: 1.5),
+          ),
+          actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('取消'),
+            ),
+            FilledButton.icon(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              icon: const Icon(Icons.check_rounded, size: 18),
+              label: const Text('确认换绑'),
+            ),
+          ],
+        );
+      },
+    );
+    return confirmed ?? false;
+  }
+
+  void _cancelLogin() {
+    if (!_busy) return;
+    _activeAuth?.cancel();
+    if (mounted) setState(() => _resultMessage = '正在停止认证…');
   }
 
   Future<void> _checkOnline() async {
@@ -717,7 +771,7 @@ class _HomePageState extends State<HomePage> {
               : kBrandGradient,
         ),
         child: FilledButton(
-          onPressed: _busy || _checking ? null : _doLogin,
+          onPressed: _checking ? null : (_busy ? _cancelLogin : _doLogin),
           style: FilledButton.styleFrom(
             backgroundColor: Colors.transparent,
             disabledBackgroundColor: Colors.transparent,
@@ -743,7 +797,7 @@ class _HomePageState extends State<HomePage> {
               else
                 const Icon(Icons.login_rounded, size: 20),
               const SizedBox(width: 8),
-              Text(_busy ? '认证中…' : '一键认证'),
+              Text(_busy ? '停止认证' : '一键认证'),
             ],
           ),
         ),

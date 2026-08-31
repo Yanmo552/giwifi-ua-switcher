@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:path_provider/path_provider.dart';
+
 /// 一次认证操作的日志条目
 class LogEntry {
   const LogEntry({
@@ -30,12 +32,10 @@ class LogEntry {
       );
 }
 
-/// 本地设置与操作日志（JSON 文件持久化，零第三方依赖）。
+/// 本地设置与操作日志（JSON 文件持久化）。
 ///
-/// 存储位置：
-/// - Windows: %APPDATA%\giwifi_ua_switcher\settings.json
-/// - iOS/macOS: ~/Library/Application Support/giwifi_ua_switcher/settings.json
-/// - 其他平台: 用户主目录下 .giwifi_ua_switcher/settings.json
+/// 存储位置：Windows 优先沿用 %APPDATA%，其他平台使用 Flutter
+/// 官方提供的应用支持目录，确保 Android 写入应用自己的持久化沙盒。
 ///
 /// 注意：密码以明文保存在本机配置文件中，请仅在个人设备上使用。
 class SettingsService {
@@ -51,23 +51,19 @@ class SettingsService {
   /// 测试专用：覆盖配置目录（正常使用请保持为 null）。
   static String? configDirOverride;
 
-  static String _configDir() {
+  static Future<String> _configDir() async {
     final override = configDirOverride;
     if (override != null && override.isNotEmpty) return override;
     final appData = Platform.environment['APPDATA'];
-    if (appData != null && appData.isNotEmpty) {
+    if (Platform.isWindows && appData != null && appData.isNotEmpty) {
       return '$appData${Platform.pathSeparator}giwifi_ua_switcher';
     }
-    if (Platform.isIOS || Platform.isMacOS) {
-      final home = Platform.environment['HOME'] ?? Directory.current.path;
-      return '$home${Platform.pathSeparator}Library${Platform.pathSeparator}Application Support${Platform.pathSeparator}giwifi_ua_switcher';
-    }
-    final home = Platform.environment['HOME'] ?? Directory.current.path;
-    return '$home${Platform.pathSeparator}.giwifi_ua_switcher';
+    final supportDir = await getApplicationSupportDirectory();
+    return '${supportDir.path}${Platform.pathSeparator}giwifi_ua_switcher';
   }
 
   static Future<File> _configFile() async {
-    final dir = Directory(_configDir());
+    final dir = Directory(await _configDir());
     await dir.create(recursive: true);
     return File(
       '${dir.path}${Platform.pathSeparator}settings.json',
