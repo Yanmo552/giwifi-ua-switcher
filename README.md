@@ -22,6 +22,8 @@ GiWiFi 门户在渲染登录页时按请求的 User-Agent 生成 `device_type` /
 - **设备类型一键切换**：电脑 / 安卓手机 / iPhone / iPad / 安卓平板 / 自定义 UA，选中即生效
 - **账号密码本地保存**（可关闭），下次打开自动填充（Android 使用应用专属持久化目录）
 - **一键认证**：拉取登录页 → 解析隐藏字段 → AES 加密 → 提交，一次点击完成；遇到“更换绑定设备”提示时弹窗确认，自动完成换绑 → 6 秒冷却 → 二次认证
+- **在线自动切换设备**：当前设备已在线时点击认证，会自动注销下线并按所选设备类型重新认证（无需手动先下线）
+- **移动端 UA 自动适配**：手机/平板 UA 请求登录页时自动携带 `pagetype=login` 参数获取真正的登录表单
 - **在线状态检查** + 页头状态徽章（已认证 / 未认证 / 状态未知）
 - **在线时长显示**：认证成功后自动查询并显示当前在线时长（HH:MM:SS）
 - **断线自动重连**：每 60 秒检测，掉线自动用当前设备类型重新认证
@@ -38,6 +40,8 @@ GiWiFi 门户在渲染登录页时按请求的 User-Agent 生成 `device_type` /
 4. POST `/gportal/Web/loginAction`，body `{data, iv}`
 5. 返回 `resultCode=124` 时：弹窗展示服务器提示，确认后 POST `resultData` 提交换绑，等待 6 秒冷却
 6. 冷却结束自动重新认证；`status=1` 后查询 `/gportal/web/logout` 解析在线时长
+7. 移动端 UA 首次请求若拿到的是无表单的引导页，自动改用 `?is_mobile=1&pagetype=login&logintype=1` 获取登录表单
+8. 已在线时点击认证：自动 GET `/gportal/web/logout` 取 `si`，POST `/gportal/Web/logoutAction` 注销后重新走 1-6 步
 
 整个流程复用同一 HttpClient 会话（Cookie 自动携带），与浏览器行为一致。
 

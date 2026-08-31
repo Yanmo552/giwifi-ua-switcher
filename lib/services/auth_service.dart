@@ -17,6 +17,7 @@ class LoginResult {
     this.rebindUrl,
     this.redirectUrl,
     this.onlineDuration,
+    this.alreadyOnline = false,
   });
 
   final bool success;
@@ -37,6 +38,9 @@ class LoginResult {
 
   /// 认证成功后的在线时长（HH:MM:SS），解析失败为 null。
   final String? onlineDuration;
+
+  /// 请求登录页时当前设备已在线（门户直接返回在线页面而非登录表单）。
+  final bool alreadyOnline;
 }
 
 /// 用户主动停止了正在进行的认证请求。
@@ -86,6 +90,7 @@ class AuthService {
   static const String kLoginPath = '/gportal/web/login';
   static const String kLogoutPath = '/gportal/web/logout';
   static const String kLoginActionPath = '/gportal/Web/loginAction';
+  static const String kLogoutActionPath = '/gportal/Web/logoutAction';
 
   /// 中断当前认证流程。关闭 socket 后 Android 上也能立即返回。
   void cancel() {
@@ -142,6 +147,17 @@ class AuthService {
         userAgent: userAgent,
         accountType: accountType,
       );
+
+      if (result.success && result.alreadyOnline) {
+        // 当前设备已在线：先注销下线，再按所选设备类型重新认证
+        report('当前设备已在线，先下线再切换设备…');
+        if (await logout(userAgent)) {
+          report('已下线，等待 1 秒后重新认证…');
+          await _sleep(const Duration(seconds: 1));
+          continue;
+        }
+        return result;
+      }
 
       if (result.success) {
         report('认证成功，正在确认在线状态…');
@@ -212,6 +228,7 @@ class AuthService {
         return const LoginResult(
           success: true,
           message: '当前设备已在线，无需重复认证',
+          alreadyOnline: true,
         );
       }
       return const LoginResult(
@@ -367,15 +384,34 @@ class AuthService {
     }
   }
 
-  /// 拉取登录页 HTML（连接失败时带通用 wlan 参数重试一次）。
+  /// 拉取登录页 HTML。
+  ///
+  /// 门户对移动端 UA 返回的首页不含登录表单（页面 JS 会跳转到
+  /// `?is_mobile=1&pagetype=login&logintype=1` 才渲染表单），
+  /// 这里按浏览器最终行为依次尝试，直到拿到登录表单或已在线页面；
+  /// 连接失败时再带通用 wlan 参数重试一次。
   Future<String> fetchLoginPage(String userAgent) async {
-    var uri = Uri.parse('$baseUrl$kLoginPath');
-    try {
-      return await _getText(uri.toString(), userAgent);
-    } on SocketException {
-      uri = Uri.parse('$baseUrl$kLoginPath?wlanuserip=10.0.0.1&wlanacname=GiWiFi');
-      return await _getText(uri.toString(), userAgent);
+    final urls = <String>[
+      '$baseUrl$kLoginPath',
+      '$baseUrl$kLoginPath?is_mobile=1&pagetype=login&logintype=1',
+      '$baseUrl$kLoginPath?wlanuserip=10.0.0.1&wlanacname=GiWiFi',
+    ];
+    Object? lastError;
+    String? firstPage;
+    for (final url in urls) {
+      try {
+        final html = await _getText(url, userAgent);
+        firstPage ??= html;
+        if (_hasPasswordInput(html) || _hasOnlineHint(html)) return html;
+      } on AuthCancelledException {
+        rethrow;
+      } catch (e) {
+        lastError = e;
+      }
     }
+    if (firstPage != null) return firstPage;
+    if (lastError != null) throw lastError;
+    throw const SocketException('无法连接认证服务器');
   }
 
   /// 当前设备在线状态。
@@ -387,6 +423,25 @@ class AuthService {
       return OnlineStatus.unknown;
     } catch (_) {
       return OnlineStatus.unknown;
+    }
+  }
+
+  /// 注销当前在线设备（取 logout 页的 si 后 POST logoutAction）。
+  /// 返回 true 表示已成功提交注销请求。
+  Future<bool> logout(String userAgent) async {
+    try {
+      final html = await _getText('$baseUrl$kLogoutPath', userAgent);
+      final hidden = parseHiddenInputs(html);
+      final si = hidden['si'] ?? '';
+      if (si.isEmpty) return false;
+      await _postText(
+        '$baseUrl$kLogoutActionPath',
+        userAgent,
+        body: 'si=${Uri.encodeComponent(si)}',
+      );
+      return true;
+    } catch (_) {
+      return false;
     }
   }
 
