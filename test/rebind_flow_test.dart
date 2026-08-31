@@ -14,6 +14,7 @@ void main() {
     final base = 'http://127.0.0.1:${server.port}';
     var loginAttempts = 0;
     var rebindPosts = 0;
+    var online = false;
 
     server.listen((req) async {
       final path = req.uri.path;
@@ -44,6 +45,7 @@ void main() {
               },
             }));
           } else {
+            online = true;
             req.response.write(jsonEncode(<String, dynamic>{
               'status': 1,
               'info': '认证成功',
@@ -55,9 +57,16 @@ void main() {
           req.response.write('ok');
         } else if (path == '/gportal/web/logout') {
           final start = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-          req.response.write(
-            '<html>var start = "$start"; online_duration</html>',
-          );
+          if (online) {
+            req.response.write(
+              '<html><input type="hidden" name="si" value="sess1">'
+              'var start = "$start"; online_duration</html>',
+            );
+          } else {
+            req.response.write(
+              '<html>var start = "$start"; online_duration</html>',
+            );
+          }
         } else {
           req.response.statusCode = 404;
         }

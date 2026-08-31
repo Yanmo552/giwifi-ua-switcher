@@ -23,6 +23,7 @@ void main() {
     final base = 'http://127.0.0.1:${server.port}';
     var sawMobileForm = false;
     var loginPosts = 0;
+    var authenticated = false;
 
     server.listen((req) async {
       final path = req.uri.path;
@@ -43,6 +44,7 @@ void main() {
           }
         } else if (path == '/gportal/Web/loginAction') {
           loginPosts++;
+          authenticated = true;
           req.response.write(jsonEncode(<String, dynamic>{
             'status': 1,
             'info': '认证成功',
@@ -50,7 +52,16 @@ void main() {
           }));
         } else if (path == '/gportal/web/logout') {
           final start = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-          req.response.write('<html>var start = "$start"; online_duration</html>');
+          if (authenticated) {
+            req.response.write(
+              '<html><input type="hidden" name="si" value="sess1">'
+              'var start = "$start"; online_duration</html>',
+            );
+          } else {
+            req.response.write(
+              '<html>var start = "$start"; online_duration</html>',
+            );
+          }
         } else {
           req.response.statusCode = 404;
         }
@@ -80,17 +91,17 @@ void main() {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     final base = 'http://127.0.0.1:${server.port}';
     var logoutPosts = 0;
-    var loginGets = 0;
+    var loginPosts = 0;
+    var online = true;
 
     server.listen((req) async {
       final path = req.uri.path;
       final query = req.uri.query;
       try {
         if (path == '/gportal/web/login' && query.isEmpty) {
-          loginGets++;
           req.response.headers.contentType = ContentType.html;
-          if (loginGets == 1) {
-            // 第一次：已在线页面（无登录表单，含“注销”）
+          if (online) {
+            // 在线：登录页无表单，含“注销”链接
             req.response.write(
               '<html><body><a href="/gportal/web/logout">注销</a></body></html>',
             );
@@ -102,14 +113,22 @@ void main() {
           req.response.write(_formPage());
         } else if (path == '/gportal/web/logout') {
           final start = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-          req.response.write(
-            '<html><input type="hidden" name="si" value="abc123">'
-            'var start = "$start"; online_duration</html>',
-          );
+          if (online) {
+            req.response.write(
+              '<html><input type="hidden" name="si" value="abc123">'
+              '<div id="online_duration" data-timestamp="$start">'
+              'online_duration</div></html>',
+            );
+          } else {
+            req.response.write(_formPage());
+          }
         } else if (path == '/gportal/Web/logoutAction') {
           logoutPosts++;
+          online = false;
           req.response.write(jsonEncode(<String, dynamic>{'status': 1}));
         } else if (path == '/gportal/Web/loginAction') {
+          loginPosts++;
+          online = true;
           req.response.write(jsonEncode(<String, dynamic>{
             'status': 1,
             'info': '认证成功',
@@ -124,7 +143,10 @@ void main() {
       }
     });
 
-    final auth = AuthService(baseUrl: base);
+    final auth = AuthService(
+      baseUrl: base,
+      portalCooldown: const Duration(milliseconds: 300),
+    );
     final result = await auth.login(
       username: 'test2024',
       password: 'TestPass123@',
@@ -135,7 +157,7 @@ void main() {
 
     expect(result.success, isTrue);
     expect(logoutPosts, 1);
-    expect(loginGets, greaterThanOrEqualTo(2));
+    expect(loginPosts, 1);
   });
 
   test('已在线但用户取消切换：不注销且不算认证成功', () async {
@@ -217,5 +239,113 @@ void main() {
 
     expect(result.success, isFalse);
     expect(result.message, contains('未检测到在线'));
+  });
+
+  test('PC 端已在线但登录页仍带表单：错误密码不能认证成功', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final base = 'http://127.0.0.1:${server.port}';
+    var loginPosts = 0;
+
+    server.listen((req) async {
+      final path = req.uri.path;
+      try {
+        if (path == '/gportal/web/login') {
+          // 真实门户：PC 端在线时登录页依然渲染表单
+          req.response.headers.contentType = ContentType.html;
+          req.response.write(_formPage());
+        } else if (path == '/gportal/web/logout') {
+          req.response.headers.contentType = ContentType.html;
+          req.response.write(
+            '<html><input type="hidden" name="si" value="abc123">'
+            '<div id="online_duration"></div></html>',
+          );
+        } else if (path == '/gportal/Web/loginAction') {
+          loginPosts++;
+          req.response.write(jsonEncode(<String, dynamic>{
+            'status': 1,
+            'info': '认证中',
+            'data': <String, dynamic>{},
+          }));
+        } else {
+          req.response.statusCode = 404;
+        }
+        await req.response.close();
+      } catch (_) {
+        await req.response.close();
+      }
+    });
+
+    final auth = AuthService(baseUrl: base);
+    final result = await auth.login(
+      username: 'test2024',
+      password: 'WrongPass123',
+      userAgent: 'TestUA',
+      onSwitchConfirm: () async => false,
+    );
+    await server.close(force: true);
+
+    expect(result.success, isFalse);
+    expect(result.message, contains('已在线'));
+    expect(loginPosts, 0);
+  });
+
+  test('status=1 后设备延迟上线：轮询到 si 才算认证成功', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final base = 'http://127.0.0.1:${server.port}';
+    var loginPosts = 0;
+    var logoutGets = 0;
+
+    server.listen((req) async {
+      final path = req.uri.path;
+      try {
+        if (path == '/gportal/web/login') {
+          req.response.headers.contentType = ContentType.html;
+          req.response.write(_formPage());
+        } else if (path == '/gportal/Web/loginAction') {
+          loginPosts++;
+          req.response.write(jsonEncode(<String, dynamic>{
+            'status': 1,
+            'info': '认证中，请勿关闭当前页面！',
+            'data': <String, dynamic>{},
+          }));
+        } else if (path == '/gportal/web/logout') {
+          logoutGets++;
+          final start = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+          if (logoutGets >= 3) {
+            // 门户异步放行：前两次还没有 si，第三次才上线
+            req.response.write(
+              '<html><input type="hidden" name="si" value="sess1">'
+              'var start = "$start"; online_duration</html>',
+            );
+          } else {
+            req.response.write(
+              '<html>认证中，请勿关闭当前页面！</html>',
+            );
+          }
+        } else {
+          req.response.statusCode = 404;
+        }
+        await req.response.close();
+      } catch (_) {
+        await req.response.close();
+      }
+    });
+
+    final auth = AuthService(
+      baseUrl: base,
+      verifyInterval: const Duration(milliseconds: 50),
+    );
+    final result = await auth.login(
+      username: 'test2024',
+      password: 'TestPass123@',
+      userAgent: 'TestUA',
+    );
+    await server.close(force: true);
+
+    expect(result.success, isTrue);
+    expect(result.message, contains('认证成功'));
+    expect(result.onlineDuration, isNotNull);
+    expect(loginPosts, 1);
+    expect(logoutGets, greaterThanOrEqualTo(3));
   });
 }

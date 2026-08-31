@@ -73,6 +73,8 @@ class AuthService {
     this.baseUrl = 'http://100.100.9.2',
     this.timeout = const Duration(seconds: 10),
     this.rebindCooldown = const Duration(seconds: 6),
+    this.portalCooldown = const Duration(seconds: 6),
+    this.verifyInterval = const Duration(seconds: 2),
   });
 
   final String baseUrl;
@@ -80,6 +82,12 @@ class AuthService {
 
   /// 提交换绑后、再次认证前的冷却时间（门户页大约 6 秒后允许再次点击）。
   final Duration rebindCooldown;
+
+  /// 门户登录接口自身的频率限制冷却（提示“请5秒后再试”，含注销后立即登录）。
+  final Duration portalCooldown;
+
+  /// status=1 后轮询 logout 页确认上线的时间间隔。
+  final Duration verifyInterval;
 
   HttpClient? _session;
   HttpClient? _activeClient;
@@ -167,16 +175,17 @@ class AuthService {
             message: '注销失败，无法切换设备；请先在网页端手动下线后重试',
           );
         }
-        report('已下线，等待 1 秒后重新认证…');
-        await _sleep(const Duration(seconds: 1));
+        report('已下线，等待 ${portalCooldown.inSeconds} 秒后重新认证…');
+        await _sleep(portalCooldown);
         continue;
       }
 
       if (result.success) {
         // 只有 loginAction 返回 status=1 才算成功，且成功后还要复核
         // 设备是否真实上线，避免“密码错误也显示成功”的假成功。
-        report('服务器返回成功，正在复核在线状态…');
-        if (await _verifyOnline(userAgent) == _OnlineVerify.offline) {
+        // 门户在 status=1 后是异步放行，需轮询 logout 页直到 si 出现。
+        report('服务器返回成功，正在等待设备上线…');
+        if (await _verifyOnline(userAgent) != _OnlineVerify.online) {
           return LoginResult(
             success: false,
             message: '服务器提示成功，但设备未检测到在线，请核对账号密码后重试',
@@ -230,6 +239,12 @@ class AuthService {
         continue;
       }
 
+      if (result.message.contains('频繁') || result.message.contains('稍后')) {
+        report('门户提示操作过于频繁，等待 ${portalCooldown.inSeconds} 秒后自动重试…');
+        await _sleep(portalCooldown);
+        continue;
+      }
+
       return result;
     }
 
@@ -258,6 +273,17 @@ class AuthService {
       return const LoginResult(
         success: false,
         message: '响应不是登录页（可能已在线，或未连接校园网）',
+      );
+    }
+
+    // PC 端设备已在线时，登录页仍渲染表单，不能仅凭表单判断状态；
+    // 实测在线时门户对任意密码都直接返回 status=1（旧会话），
+    // 只有 logout 页是否下发 si 才是可靠的在线信号。
+    if (await _hasActiveSession(userAgent)) {
+      return const LoginResult(
+        success: false,
+        message: '当前设备已在线',
+        alreadyOnline: true,
       );
     }
 
@@ -385,29 +411,47 @@ class AuthService {
   }
 
   /// 复核设备是否真实上线：请求 logout 页。
-  /// 只有看到登录表单（密码框）才判定为“未上线”。
+  /// 实测：logout 页带 si 隐藏域即在线；带密码框即离线。
   Future<_OnlineVerify> _verifyOnline(String userAgent) async {
+    // 换绑/正常认证后门户异步放行（约 2~5 秒），轮询等待上线。
+    for (var i = 0; i < 6; i++) {
+      try {
+        final html = await _getText('$baseUrl$kLogoutPath', userAgent);
+        if (_hasPasswordInput(html)) return _OnlineVerify.offline;
+        if (_hasSiInput(html)) return _OnlineVerify.online;
+      } catch (_) {
+        // 单次失败继续轮询
+      }
+      if (i < 5) await _sleep(verifyInterval);
+    }
+    return _OnlineVerify.unknown;
+  }
+
+  /// 当前设备是否已有在线会话（门户只在下发 si 时表示在线）。
+  Future<bool> _hasActiveSession(String userAgent) async {
     try {
       final html = await _getText('$baseUrl$kLogoutPath', userAgent);
-      if (_hasPasswordInput(html)) return _OnlineVerify.offline;
-      final hidden = parseHiddenInputs(html);
-      if (hidden.containsKey('si') || _hasOnlineHint(html)) {
-        return _OnlineVerify.online;
-      }
-      return _OnlineVerify.unknown;
+      return _hasSiInput(html);
     } catch (_) {
-      return _OnlineVerify.unknown;
+      return false;
     }
   }
+
+  bool _hasSiInput(String html) => RegExp(
+        r'name\s*=\s*["\x27]?si\s*["\x27>\s]',
+        caseSensitive: false,
+      ).hasMatch(html);
 
   /// 认证成功后查询在线时长（HH:MM:SS）；离线或解析失败返回 null。
   Future<String?> _fetchOnlineDuration(String userAgent) async {
     try {
       final html = await _getText('$baseUrl$kLogoutPath', userAgent);
       if (_hasPasswordInput(html)) return null;
-      final match = RegExp(
-        r'start\s*=\s*["\x27]?(\d{10})["\x27]?',
-      ).firstMatch(html);
+      final match =
+          RegExp(r'data-timestamp=["\x27]?(\d{10})').firstMatch(html) ??
+              RegExp(
+                r'start\s*=\s*["\x27]?(\d{10})["\x27]?',
+              ).firstMatch(html);
       if (match == null) return null;
       final start = int.tryParse(match.group(1)!);
       if (start == null) return null;
@@ -455,11 +499,13 @@ class AuthService {
   }
 
   /// 当前设备在线状态。
+  /// 登录页在 PC 端无论在线与否都渲染表单，不能作为依据；
+  /// 以 logout 页是否下发 si 为准确信号。
   Future<OnlineStatus> checkOnline(String userAgent) async {
     try {
-      final html = await fetchLoginPage(userAgent);
+      final html = await _getText('$baseUrl$kLogoutPath', userAgent);
+      if (_hasSiInput(html)) return OnlineStatus.online;
       if (_hasPasswordInput(html)) return OnlineStatus.offline;
-      if (_hasOnlineHint(html)) return OnlineStatus.online;
       return OnlineStatus.unknown;
     } catch (_) {
       return OnlineStatus.unknown;
@@ -467,19 +513,20 @@ class AuthService {
   }
 
   /// 注销当前在线设备（取 logout 页的 si 后 POST logoutAction）。
-  /// 返回 true 表示已成功提交注销请求。
+  /// 返回 true 表示门户确认“下线成功”（status=1）。
   Future<bool> logout(String userAgent) async {
     try {
       final html = await _getText('$baseUrl$kLogoutPath', userAgent);
       final hidden = parseHiddenInputs(html);
       final si = hidden['si'] ?? '';
       if (si.isEmpty) return false;
-      await _postText(
+      final body = await _postText(
         '$baseUrl$kLogoutActionPath',
         userAgent,
         body: 'si=${Uri.encodeComponent(si)}',
       );
-      return true;
+      final json = jsonDecode(body) as Map<String, dynamic>;
+      return json['status'] == 1;
     } catch (_) {
       return false;
     }
