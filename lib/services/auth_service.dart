@@ -261,7 +261,9 @@ class AuthService {
     final html = await fetchLoginPage(userAgent);
 
     if (!_hasPasswordInput(html)) {
-      if (_hasOnlineHint(html)) {
+      // 移动端在线首页无表单，且页面 JS 模板里带“logout/online_duration”
+      // 等字样，不能用文本提示判断在线，只能以 logout 页的 si 为准。
+      if (await _hasActiveSession(userAgent)) {
         // 已在线不代表账号密码验证通过：绝不能当作“认证成功”返回，
         // 是否切换设备由上层决定。
         return const LoginResult(
@@ -472,7 +474,7 @@ class AuthService {
   ///
   /// 门户对移动端 UA 返回的首页不含登录表单（页面 JS 会跳转到
   /// `?is_mobile=1&pagetype=login&logintype=1` 才渲染表单），
-  /// 这里按浏览器最终行为依次尝试，直到拿到登录表单或已在线页面；
+  /// 这里按浏览器最终行为依次尝试，只认带密码框的登录表单页；
   /// 连接失败时再带通用 wlan 参数重试一次。
   Future<String> fetchLoginPage(String userAgent) async {
     final urls = <String>[
@@ -486,7 +488,7 @@ class AuthService {
       try {
         final html = await _getText(url, userAgent);
         firstPage ??= html;
-        if (_hasPasswordInput(html) || _hasOnlineHint(html)) return html;
+        if (_hasPasswordInput(html)) return html;
       } on AuthCancelledException {
         rethrow;
       } catch (e) {
@@ -633,12 +635,6 @@ class AuthService {
         caseSensitive: false,
       ).hasMatch(html);
 
-  bool _hasOnlineHint(String html) =>
-      html.contains('注销') ||
-      html.contains('logout') ||
-      html.contains('下线') ||
-      html.contains('已在线') ||
-      html.contains('online_duration');
 }
 
 /// 在线复核结果（仅本文件内部使用）。

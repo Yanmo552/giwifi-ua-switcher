@@ -39,6 +39,8 @@ void main() {
             req.response.write(
               '<html><head><title>欢迎使用GiWiFi</title></head>'
               '<body><script>function reloadMobile(){}</script>'
+              '<a href="/gportal/web/logout">logout</a>'
+              '<div id="online_duration">online_duration</div>'
               '<div class="web-login">网页登录</div></body></html>',
             );
           }
@@ -176,6 +178,12 @@ void main() {
         } else if (path == '/gportal/Web/logoutAction') {
           logoutPosts++;
           req.response.write(jsonEncode(<String, dynamic>{'status': 1}));
+        } else if (path == '/gportal/web/logout') {
+          // 已在线：logout 页带 si（真实门户的可靠在线信号）
+          req.response.headers.contentType = ContentType.html;
+          req.response.write(
+            '<html><input type="hidden" name="si" value="abc123"></html>',
+          );
         } else {
           req.response.statusCode = 404;
         }
