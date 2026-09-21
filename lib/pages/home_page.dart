@@ -2,11 +2,15 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../models/device_profile.dart';
 import '../services/auth_service.dart';
 import '../services/settings_service.dart';
 import '../theme.dart';
+
+/// 项目仓库地址（右上角入口按钮跳转）。
+const String kRepoUrl = 'https://github.com/Yanmo552/giwifi-ua-switcher';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -467,9 +471,42 @@ class _HomePageState extends State<HomePage> {
               ],
             ),
           ),
+          const SizedBox(width: 10),
+          _buildRepoButton(),
         ],
       ),
     );
+  }
+
+  /// 右上角仓库入口：点击用系统浏览器打开 GitHub 仓库。
+  Widget _buildRepoButton() {
+    return Tooltip(
+      message: '打开 GitHub 仓库',
+      child: Material(
+        color: kBrandInk.withValues(alpha: .14),
+        borderRadius: BorderRadius.circular(999),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(999),
+          onTap: _openRepo,
+          child: const Padding(
+            padding: EdgeInsets.all(7),
+            child: Icon(Icons.code_rounded, color: kBrandInk, size: 20),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openRepo() async {
+    try {
+      final opened = await launchUrl(
+        Uri.parse(kRepoUrl),
+        mode: LaunchMode.externalApplication,
+      );
+      if (!opened) _showSnack('未能打开浏览器，仓库地址：$kRepoUrl');
+    } catch (_) {
+      _showSnack('未能打开浏览器，仓库地址：$kRepoUrl');
+    }
   }
 
   Widget _buildSectionTitle(IconData icon, String title, String subtitle) {

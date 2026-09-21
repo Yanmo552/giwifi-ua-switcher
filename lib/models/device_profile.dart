@@ -43,13 +43,6 @@ class DeviceProfile {
           'AppleWebKit/605.1.15 (KHTML, like Gecko) '
           'Version/17.5 Mobile/15E148 Safari/604.1',
     ),
-    DeviceProfile(
-      id: 'android_tablet',
-      label: '安卓平板',
-      userAgent: 'Mozilla/5.0 (Linux; Android 14; SM-X710) '
-          'AppleWebKit/537.36 (KHTML, like Gecko) '
-          'Chrome/126.0.0.0 Safari/537.36',
-    ),
     DeviceProfile(id: 'custom', label: '自定义', userAgent: ''),
   ];
 

@@ -30,10 +30,14 @@ void main() {
     expect(find.text('记住账号密码'), findsOneWidget);
     expect(find.text('高级设置'), findsOneWidget);
 
-    // 六种设备预设全部渲染
-    for (final label in ['电脑', '安卓手机', 'iPhone', 'iPad', '安卓平板', '自定义']) {
+    // 五种设备预设全部渲染（安卓平板预设已移除）
+    for (final label in ['电脑', '安卓手机', 'iPhone', 'iPad', '自定义']) {
       expect(find.text(label), findsOneWidget, reason: '缺少设备选项：$label');
     }
+    expect(find.text('安卓平板'), findsNothing);
+
+    // 右上角仓库入口
+    expect(find.byTooltip('打开 GitHub 仓库'), findsOneWidget);
   });
 
   testWidgets('在线检测：无网络时给出友好提示', (WidgetTester tester) async {
