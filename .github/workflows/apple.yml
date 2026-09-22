@@ -2,12 +2,6 @@ name: Apple builds (iOS/macOS)
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths-ignore:
-      - '**.md'
-      - 'test/**'
-      - 'tool/**'
 
 jobs:
   build:
